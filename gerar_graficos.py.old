@@ -1,0 +1,54 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ==========================================
+# 1. CARREGAR OS DADOS DO CSV
+# ==========================================
+arquivo_csv = "dados_pendulo.csv"
+
+try:
+    df = pd.read_csv(arquivo_csv)
+except FileNotFoundError:
+    print(f"Erro: O arquivo '{arquivo_csv}' não foi encontrado. Execute o rastreador primeiro.")
+    exit()
+
+# Extrai as colunas para variáveis mais limpas
+tempo = df["tempo_s"]
+pos_x = df["pos_x"]
+pos_y = df["pos_y"]
+
+print(f"Dados carregados com sucesso! Total de pontos: {len(df)}")
+
+# ==========================================
+# 2. CRIAR OS GRÁFICOS (X vs T e Y vs T)
+# ==========================================
+# Cria uma figura com 2 gráficos empilhados (compartilhando o eixo X do tempo)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+# --- Gráfico 1: Posição X vs Tempo ---
+ax1.plot(tempo, pos_x, color='blue', linewidth=1.2, label='Posição X')
+ax1.set_ylabel('Posição X (pixels)', fontsize=12)
+ax1.set_title('Análise do Movimento do Pêndulo', fontsize=14, fontweight='bold')
+ax1.grid(True, linestyle='--', alpha=0.6)
+ax1.legend(loc='upper right')
+
+# --- Gráfico 2: Posição Y vs Tempo ---
+ax2.plot(tempo, pos_y, color='red', linewidth=1.2, label='Posição Y')
+ax2.set_xlabel('Tempo (segundos)', fontsize=12)
+ax2.set_ylabel('Posição Y (pixels)', fontsize=12)
+ax2.grid(True, linestyle='--', alpha=0.6)
+ax2.legend(loc='upper right')
+
+# Ajusta o espaçamento para ficar elegante
+plt.tight_layout()
+
+# ==========================================
+# 3. SALVAR E EXIBIR
+# ==========================================
+# Salva o gráfico em alta qualidade como uma imagem PNG
+imagem_saida = "graficos_pendulo.png"
+plt.savefig(imagem_saida, dpi=300)
+print(f"Gráfico guardado com sucesso como '{imagem_saida}'!")
+
+# Abre a janela interativa com os gráficos
+plt.show()

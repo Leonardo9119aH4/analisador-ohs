@@ -1,0 +1,127 @@
+import os
+# Força o OpenCV a usar o XCB para evitar erros de interface no Linux
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+import cv2
+import pandas as pd
+import numpy as np
+
+# ==========================================
+# CONFIGURAÇÕES
+# ==========================================
+video_path = "video_pendulo.mp4"
+output_csv = "dados_pendulo.csv"
+
+# ==========================================
+# INICIALIZAÇÃO
+# ==========================================
+cap = cv2.VideoCapture(video_path)
+
+if not cap.isOpened():
+    print(f"Erro: Não foi possível abrir o vídeo '{video_path}'. Verifique se ele está na mesma pasta.")
+    exit()
+
+fps = cap.get(cv2.CAP_PROP_FPS)
+total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+print(f"Vídeo carregado com sucesso!")
+print(f"FPS: {fps} | Total de quadros: {total_frames}")
+print("Processando com Limiarização Adaptativa... Pressione 'q' para interromper.\n")
+
+# Criação da janela redimensionável (800x600)
+window_name = "Rastreamento Inteligente"
+cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+cv2.resizeWindow(window_name, 800, 600)
+
+dados = []
+frame_count = 0
+
+# ==========================================
+# LOOP DE PROCESSAMENTO DO VÍDEO
+# ==========================================
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break  # Fim do vídeo
+    
+    tempo = frame_count / fps
+    height, width = frame.shape[:2]
+    
+    # 1. Converte para escala de cinza e aplica um desfoque leve para remover granulações
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    # 2. Limiarização Adaptativa (Adaptive Threshold)
+    # Resolve o problema de sombras na parede e iluminação irregular, 
+    # pois analisa o contraste local de cada região em vez de um número global fixo.
+    thresh = cv2.adaptiveThreshold(
+        gray, 255, 
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 
+        31,  # Tamanho da vizinhança (deve ser ímpar)
+        5    # Constante subtraída da média local
+    )
+    
+    # 3. Limpeza de ruídos pontuais
+    kernel = np.ones((5, 5), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+    
+    # 4. Busca os contornos na imagem tratada
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if len(contours) > 0:
+        valid_contours = []
+        
+        for c in contours:
+            # Filtro 1: Tamanho (área) para ignorar ruídos pequenininhos ou manchas gigantes
+            if 50 < cv2.contourArea(c) < 5000:
+                M = cv2.moments(c)
+                if M["m00"] > 0:
+                    cY_temp = int(M["m01"] / M["m00"])
+                    
+                    # Filtro 2: Posição Y -> Ignora o topo da tela (prego e suporte superior)
+                    if cY_temp > height * 0.25:
+                        valid_contours.append(c)
+        
+        if len(valid_contours) > 0:
+            # Pega o maior contorno válido na área permitida (o pêndulo)
+            c = max(valid_contours, key=cv2.contourArea)
+            
+            # Calcula o centro geométrico (posição x e y)
+            M = cv2.moments(c)
+            if M["m00"] > 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                
+                # Salva os dados na lista
+                dados.append({
+                    "tempo_s": round(tempo, 4),
+                    "pos_x": cX,
+                    "pos_y": cY
+                })
+                
+                # Desenha um círculo verde no ponto rastreado para visualização
+                cv2.circle(frame, (cX, cY), 8, (0, 255, 0), -1)
+    
+    # Mostra o vídeo na tela com o rastreamento em tempo real
+    cv2.imshow(window_name, frame)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        print("Processamento interrompido pelo utilizador.")
+        break
+        
+    frame_count += 1
+
+# ==========================================
+# FINALIZAÇÃO E SALVAMENTO
+# ==========================================
+cap.release()
+cv2.destroyAllWindows()
+
+df = pd.DataFrame(dados)
+df.to_csv(output_csv, index=False)
+
+print(f"Processamento concluído com sucesso!")
+print(f"Foram coletados {len(df)} pontos de dados.")
+print(f"Os resultados foram salvos no ficheiro: '{output_csv}'")
